@@ -1,5 +1,15 @@
 # Changelog
 
+## v1.1.0 — 2026-04-19
+
+Fixes from first real setup run.
+
+- **Fix: Ollama provider config** — `provider: "ollama"` alias can silently route to OpenRouter. Added warning to use `provider: "custom"` with explicit `base_url` instead
+- **Add: Fallback behavior warning** — Hermes auto-switches to cloud fallback without asking. Documented so users know before it costs them money
+- **Add: OpenRouter credits warning** — free credits drain fast with agentic use; added link to check balance
+- **Add: Troubleshooting rows** — "Local model sends to OpenRouter" and "Fallback triggers unexpectedly (HTTP 400)"
+- **Fix: Config tip** in Option A noting the `ollama` alias gotcha
+
 ## v1.0.0 — 2026-04-19
 
 Initial public release.

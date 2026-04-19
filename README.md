@@ -197,6 +197,8 @@ claude
 
 Claude Code will handle: installing Ollama, pulling the model, inspecting and running the Hermes installer, configuring `~/.hermes/config.yaml` (Ollama as primary, OpenRouter as fallback), setting up the Telegram gateway with user restriction, installing the gateway as a launchd service (`hermes gateway install`), and running end-to-end verification. It will ask clarifying questions before making decisions — like which cloud fallback model you prefer and whether to inspect the installer script first.
 
+> **Config tip from real experience:** If Claude Code sets `provider: "ollama"` in config.yaml, verify it works. The `ollama` alias can silently route to OpenRouter instead of localhost, triggering unexpected fallback charges. The fix is `provider: "custom"` with `base_url: "http://localhost:11434/v1"`. See [Troubleshooting](#troubleshooting) for details.
+
 **Your hands-on time:** ~5 minutes (Homebrew install + writing tokens to `.env`). Claude Code handles the rest in ~20 minutes including the model download (~6 GB for Qwen3.5 9B).
 
 **Note on cost:** Claude Code is a first-party Anthropic tool — it's not affected by the April 2026 third-party agent cutoff. Usage counts against your Claude Pro or Max subscription limits. A full install session typically uses a small fraction of daily limits.
@@ -535,8 +537,14 @@ Hermes supports multiple execution backends: local (default), Docker, SSH, and o
 
 **Restrict your Telegram bot.** Without `TELEGRAM_ALLOWED_USERS` in your `.env`, anyone who discovers your bot's username can chat with your agent. Always set it to your numeric Telegram user ID (find it via @userinfobot → `/myid`).
 
+### Cloud fallback is automatic — no approval prompt
+When the local model fails, Hermes switches to the fallback provider immediately without asking. There's no config option for user-confirmed fallback. This means a misconfigured local provider can silently burn cloud credits. Know this going in — and make sure your local config actually works (see Troubleshooting below) before relying on the fallback as a safety net.
+
 ### Token costs with cloud models
 Even "cheap" cloud models add up with heavy agentic use. Set spending limits on every API provider before you start. Start conservative ($20–50/month) and raise once you understand usage patterns.
+
+### OpenRouter free credits run out fast
+OpenRouter gives new accounts a small free credit. With agentic use, this can drain in a single session — especially if the fallback is triggering when it shouldn't. Check your balance at [openrouter.ai/settings/credits](https://openrouter.ai/settings/credits). When credits hit zero, the fallback returns HTTP 402 and fails too.
 
 ### Session stability
 Some users report sessions timing out or dying, especially with local models. Not widely reported — may be hardware or config specific. Monitor during the first week.
@@ -562,6 +570,8 @@ Your `~/.hermes/` directory contains skills, memory (SQLite database), and confi
 | **Ollama not starting** | `brew services restart ollama`. Check logs: `cat /opt/homebrew/var/log/ollama.log` |
 | **Model runs out of memory** | Switch to a smaller model: `ollama pull qwen3.5:4b`. Or close other apps. |
 | **Hermes can't find Ollama** | Make sure Ollama is running: `curl http://127.0.0.1:11434/v1/models`. Re-run `hermes setup` if needed. |
+| **Local model sends to OpenRouter instead of Ollama** | Common config issue: `provider: "ollama"` alias doesn't always resolve correctly. Fix: change to `provider: "custom"` in `~/.hermes/config.yaml`, quote all values, and make sure `base_url: "http://localhost:11434/v1"` is set. Restart gateway after: `hermes gateway stop && hermes gateway start`. |
+| **Fallback triggers unexpectedly (HTTP 400)** | Usually means the local model name (e.g., `qwen3.5:9b`) was sent to OpenRouter, which doesn't recognize it. Fix the provider config above. Check gateway logs: `tail -50 ~/.hermes/logs/gateway.log`. |
 | **Telegram bot not responding** | Check gateway: `hermes gateway status`. Re-run `hermes gateway setup` with your bot token. |
 | **SSH "No route to host"** | Mac Mini's network went to sleep. Fix: `sudo pmset -a sleep 0 && sudo pmset -a disablesleep 1 && sudo pmset -a womp 1 && sudo pmset -a networkoversleep 1`. The GUI energy setting alone isn't enough for headless setups. |
 | **SSH connection refused** | Verify Remote Login is enabled in System Settings > Sharing. Check firewall isn't blocking port 22. |
