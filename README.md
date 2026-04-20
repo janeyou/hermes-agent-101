@@ -14,7 +14,7 @@ Based on community discussions, official docs, and real-world experience reports
 3. [Phase 2: Go Headless](#phase-2-go-headless)
 4. [Phase 3: Install the Stack](#phase-3-install-the-stack) — Option A: Claude Code does it / Option B: manual
 5. [Phase 4: Auto-Start on Boot](#phase-4-auto-start-on-boot)
-6. [Phase 5: First Tasks to Try](#phase-5-first-tasks-to-try)
+6. [Phase 5: First Contact & Starter Tasks](#phase-5-first-contact--starter-tasks) — /sethome first, what the bot can/can't do, tasks by tool prerequisite
 7. [Phase 6: Advanced Tooling](#phase-6-advanced-tooling)
 
 **Reference (read when needed)**
@@ -41,6 +41,13 @@ Before you start, have these ready:
 - Ethernet cable (strongly recommended for 24/7 stability over Wi-Fi)
 - ~20 GB free disk space (models: 3–8 GB each, plus Hermes and tools)
 
+**Pre-flight verification (do after install, before Telegram):**
+- [ ] **Ollama running:** `curl http://localhost:11434/v1/models` — should list your model
+- [ ] **Model pulled:** `ollama list` — should show `qwen3.5:9b` (or your chosen model)
+- [ ] **Smoke test:** `curl -s http://localhost:11434/v1/chat/completions -H 'Content-Type: application/json' -d '{"model":"qwen3.5:9b","messages":[{"role":"user","content":"Hi"}]}'` — should return a coherent JSON response within 30s
+- [ ] **OpenRouter credits (if using fallback):** Visit [openrouter.ai/settings/credits](https://openrouter.ai/settings/credits). Free tier gives ~2666 tokens per request. Either add $5 (enough for weeks of casual use) or set `max_tokens: 4096` in your fallback config.
+- [ ] **Web search backend (if you want news/current events):** Get a free Tavily key at [tavily.com](https://tavily.com) (1,000 searches/month free). Without this, the bot will hallucinate current events.
+
 **Accounts (create before touching the Mac Mini):**
 - **Dedicated Apple ID** — don't use your personal one. Create a new iCloud account for the agent machine. This keeps your personal iCloud, contacts, and files isolated. If your phone number is already tied to an Apple ID, create the new one via icloud.com or directly during macOS Setup Assistant — both work around the phone number limitation.
 - **Telegram bot token** — this is how you'll chat with your agent from your phone. To create one:
@@ -53,7 +60,7 @@ Before you start, have these ready:
   1. In Telegram, search for **@userinfobot**
   2. Tap **Start**, then type `/myid`
   3. It replies with your numeric ID (e.g., `123456789`). Save this — you'll add it during install.
-- **OpenRouter API key** (optional, for cloud fallback) — free at openrouter.ai
+- **OpenRouter API key** (optional, for cloud fallback) — free at openrouter.ai. **Recommended:** add $5 credit after signup — free tier caps at ~2666 tokens/request, which blocks most real conversations. $5 buys ~1M tokens with Claude Sonnet, enough for weeks of casual fallback use.
 
 **Security note:** Use a dedicated Apple ID, not your personal one. Community consensus is strong on this — you don't want an AI agent in the blast radius of your personal iCloud, photos, or passwords. For the same reason, don't store personal passwords on the agent machine.
 
@@ -271,54 +278,79 @@ Message your Telegram bot from your phone — you should get a reply. If so, the
 
 ## Phase 4: Auto-Start on Boot
 
-Create a launch agent so Hermes starts automatically when the Mac Mini powers on:
+Hermes has a built-in command that creates the correct launchd plist:
 
 ```bash
-cat > ~/Library/LaunchAgents/com.hermes.agent.plist << 'EOF'
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>Label</key>
-    <string>com.hermes.agent</string>
-    <key>ProgramArguments</key>
-    <array>
-        <string>/opt/homebrew/bin/hermes</string>
-        <string>start</string>
-    </array>
-    <key>RunAtLoad</key>
-    <true/>
-    <key>KeepAlive</key>
-    <true/>
-    <key>StandardOutPath</key>
-    <string>/tmp/hermes.out.log</string>
-    <key>StandardErrorPath</key>
-    <string>/tmp/hermes.err.log</string>
-</dict>
-</plist>
-EOF
-
-# Load it
-launchctl load ~/Library/LaunchAgents/com.hermes.agent.plist
+hermes gateway install
 ```
 
-> **Note:** The path `/opt/homebrew/bin/hermes` is correct for Apple Silicon (all M4 Mac Minis). If Hermes was installed elsewhere, check with `which hermes`.
+This creates `~/Library/LaunchAgents/ai.hermes.gateway.plist` with the correct venv path, environment variables, and working directory. The gateway starts on boot and auto-restarts if it crashes.
+
+**Verify it's installed:**
+```bash
+launchctl list | grep hermes
+# Should show: <PID>  -15  ai.hermes.gateway
+```
+
+**Logs:** `~/.hermes/logs/gateway.log` and `~/.hermes/logs/gateway.error.log`
+
+**Common issue:** If `hermes` command isn't found, the installer puts it at `~/.local/bin/hermes`. Add it to your PATH:
+```bash
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc
+source ~/.zshrc
+```
 
 **Backup reminder:** Your skills and memory live in `~/.hermes/`. Make sure Time Machine or your backup solution covers this directory. If you lose it, the agent loses everything it's learned.
 
 ---
 
-## Phase 5: First Tasks to Try
+## Phase 5: First Contact & Starter Tasks
 
-Start simple, build confidence:
+### Step 0: Set up your chat (do this FIRST)
 
-1. **Test basic chat** — Open Telegram, message your bot: "Hello, what can you do?"
-2. **Test tool calling** — "Summarize this URL: [any article link]"
-3. **Test multi-step tasks** — "Research the top 3 AI agent frameworks, compare them, and save a summary to ~/Documents/agents.md"
-4. **Test memory** — Have a conversation, close the session. Next day, ask: "What were we working on yesterday?"
-5. **Test skill creation** — Give it a complex task (5+ steps). Afterward, check `~/.hermes/skills/` — it should have auto-generated a reusable skill.
-6. **Set up a cron job** — "Every day at 8am, summarize the top HN posts and send to Telegram"
-7. **Write your SOUL.md** — SOUL.md is Hermes's persistent personality file — it defines who the agent is, how it should behave, and what it knows about you. Think of it as the agent's identity document. Tell Hermes about yourself, your work, your preferences. After chatting for a day, say: "Update your SOUL.md based on what you've learned about me." You can also edit `~/.hermes/SOUL.md` directly.
+1. Open Telegram, find your bot
+2. **Send `/sethome`** — this registers the chat for cron jobs and cross-platform messages. Without this, the bot prompts you every time.
+3. Send "Hi" — verify you get a coherent reply (not an HTTP error)
+4. If you see errors, check [Troubleshooting](#troubleshooting) before continuing
+
+### What your bot can and can't do
+
+Your Hermes bot on Telegram is **not** the same as ChatGPT or Claude Code. By default:
+
+| Can do | Cannot do |
+|--------|-----------|
+| Reply to messages in chat | Browse your local filesystem (e.g., read ~/Documents/file.md) |
+| Run terminal commands (if terminal toolset enabled) | Access your Obsidian vault or local files by path |
+| Use web search (if web backend configured — see [Tavily setup](#perception-web--documents)) | Open URLs or scrape websites (without browser tool) |
+| Execute skills you've created | Know what happened today (without web search — it will hallucinate) |
+| Schedule cron jobs | Act on "no fallback please" said in chat (use `/nofallback` command instead) |
+
+**Key insight:** Saying things like "no fallback" or "use local model" in chat are instructions to the LLM persona — the bot treats them as conversation, not config commands. To change bot behavior, use `/` commands or edit `config.yaml`.
+
+### Starter tasks (no extra tools needed)
+
+These work with the default toolset — no web search or file access required:
+
+1. **Test basic chat** — "Hello, what can you do?"
+2. **Test memory** — Have a conversation, close the session. Next day, ask: "What were we working on yesterday?"
+3. **Test personalities** — `/personality kawaii` then chat. Try `/personality technical` for a different style.
+4. **Test summarization** — Paste a paragraph of text and ask for a summary
+5. **Write your SOUL.md** — Tell Hermes about yourself, your work, your preferences. After chatting for a day, say: "Update your SOUL.md based on what you've learned about me." You can also edit `~/.hermes/SOUL.md` directly.
+
+### Tool-dependent tasks (verify tools first)
+
+Before attempting these, confirm the required tools are configured:
+
+| Task | Required tool | How to verify |
+|------|--------------|---------------|
+| **Daily news digest** | Web search (Tavily/Exa) | Send "search for today's headlines" — should invoke `web_search` tool, not make up news |
+| **Summarize a URL** | Web extract | Send "summarize this URL: [link]" — should fetch and summarize real content |
+| **File review/editing** | Terminal + file | Send "list files in /tmp" — should invoke `terminal` tool |
+| **Code generation + run** | Terminal | Send "run `echo hello`" — should execute and show output |
+| **Set up a cron job** | Cron | "Every day at 8am, summarize the top HN posts and send to Telegram" |
+| **Home automation** | Home Assistant | Check HA integration in config |
+
+> **Common mistake:** Asking for a "daily news digest" before configuring web search. Without it, the bot fabricates news from training data. This was the #1 failure in real-world testing — see [chat analysis](notes/chat-history-analysis.md).
 
 ---
 
@@ -333,15 +365,23 @@ Once your basic setup is stable (~1 week), add these layers. Source: @ResearchWa
 | **Single page scrape** | [Jina Reader](https://r.jina.ai/) | Prefix URL with `r.jina.ai/` — clean markdown |
 | **Bulk scrape** | [Crawl4AI](https://github.com/unclecode/crawl4ai) | Open-source, local, Playwright-based |
 | **Anti-bot bypass** | Scrapling | Built into Hermes as optional skill |
-| **Web search** | [Tavily](https://tavily.com/) | 1,000 free searches/month, structured results |
-| **Search fallback** | DuckDuckGo | Built into Hermes, zero cost |
+| **Web search** | [Tavily](https://tavily.com/) | 1,000 free searches/month, structured results — recommended starter |
+| **Search (semantic)** | [Exa](https://exa.ai/) | ~1,000 queries/month ($5 credit), better for research-heavy tasks |
 | **Doc conversion** | [Pandoc](https://pandoc.org/) | PDF/DOCX/HTML/EPUB to Markdown |
 | **PDF to Markdown** | [Marker](https://github.com/datalab-to/marker) | Better than Pandoc for complex PDFs |
 
+**Why Tavily over the others?** Hermes supports 4 web backends: Tavily, Exa, Firecrawl, and Parallel. Tavily wins for beginners because: most generous free tier (1,000/month vs Firecrawl's 500), simplest setup (one API key), and search-optimized — exactly what "give me today's news" needs. Switch to Exa if you do semantic research, or Firecrawl if you need full-page scraping.
+
 ```bash
 # Set Tavily as search backend (1,000 free searches/month)
+# Sign up at tavily.com → Dashboard → API Keys
 echo 'TAVILY_API_KEY=tvly-yourkey' >> ~/.hermes/.env
 hermes config set web.backend tavily
+
+# Verify it's working
+hermes gateway restart
+# Then send: "Search for today's top AI news" via Telegram
+# You should see web_search tool calls in the tool progress output
 ```
 
 ### Expression: Voice + Image
@@ -444,6 +484,43 @@ Start local, use cloud as fallback. Hermes + Ollama make switching seamless.
 | **Budget cloud** | MiniMax M2.7 via OpenRouter | ~$0.30 input / $1.20 output per 1M | When previews end; cheapest capable cloud option |
 | **Heavy lifting (cloud)** | Claude Opus or GLM 5.1 | $5+ input / $25+ output per 1M | Enterprise tasks, deep debugging — use sparingly |
 
+### Local LLM alternatives for Hermes Agent
+
+Hermes includes **12 built-in tool-call parsers** for different model families. You're not locked to Qwen — here's what else works well:
+
+| Model | Ollama name | Size | Tool calling | Context | Best for | 16GB? |
+|---|---|---|---|---|---|---|
+| **Qwen3.5 9B** | `qwen3.5:9b` | ~6 GB | Native (parser: `qwen`) | 256K | All-rounder daily driver | Yes |
+| **Nous Hermes 3 8B** | `nous-hermes3:8b` | ~5 GB | Native (parser: `hermes`) | 128K | Best Hermes integration — model was co-designed with the agent | Yes |
+| **Llama 4 Scout 17B-A4B** | `llama4:scout` | ~12 GB | Native (parser: `llama4_json`) | 128K | MoE — only 4B active/token, fast inference | Yes |
+| **Mistral Small 3.2 24B** | `mistral-small3.2` | ~14 GB | Native (parser: `mistral`) | 128K | Strong coding + reasoning, instruction following | Tight |
+| **Gemma 4 E4B** | `gemma4:e4b` | ~3 GB | Native (OpenAI format) | 128K | Ultralight, native audio/video | Yes, fast |
+| **DeepSeek V3 0324** | `deepseek-v3:q4` | ~15 GB | Native (parser: `deepseek_v3`) | 128K | Strong reasoning, coding | Tight |
+| **Phi-4 Mini 3.8B** | `phi4-mini` | ~2 GB | OpenAI function calling | 128K | Tiny but capable for simple tasks | Yes, very fast |
+
+**Recommendations by use case:**
+
+| Use case | Best local model | Why |
+|---|---|---|
+| **General daily driver** | Qwen3.5 9B | Best balance of size, speed, and capability |
+| **Best Hermes integration** | Nous Hermes 3 8B | Co-designed with Hermes — native tool format, trained for agent use |
+| **Fast + cheap (simple tasks)** | Gemma 4 E4B or Phi-4 Mini | Tiny models, fast inference, good for cron jobs and quick lookups |
+| **Maximum local reasoning** | Llama 4 Scout (MoE) | 17B parameters but only 4B active — fast and smart |
+| **Coding focus** | Mistral Small 3.2 or Qwen3 Coder | Strong on code generation and debugging |
+
+**So which model should I actually use?** Community testing (April 2026) shows Qwen 3.5 has the most stable tool calling of any model family at this size — it rarely hallucinates calls or forgets parameters. For 16GB, **Qwen 3.5 9B is the optimal choice**: best tool-calling reliability, 256K context (largest in class), and leaves enough RAM headroom for macOS + Ollama. If you want to experiment, try `qwen3.5:14b` (Q4, ~10GB) for better reasoning at the cost of slower inference (~6-8 tok/s). Gemma 4 12B is the runner-up — native structured output, very reliable — but Qwen edges it out for Hermes specifically.
+
+**Important:** Hermes uses tool-use enforcement guidance to tell models to actually call their tools (not just describe what they'd do). This is now enabled for all major local model families: Qwen, Llama, Mistral, Gemma, DeepSeek, and Phi. Without this, smaller models tend to say "I'll check the file" without actually calling `read_file`.
+
+To switch models:
+```bash
+# Pull a new model
+ollama pull nous-hermes3:8b
+
+# Switch in config.yaml or per-session
+/model nous-hermes3:8b
+```
+
 ---
 
 ## What a Mac Mini Can Handle
@@ -452,14 +529,17 @@ Start local, use cloud as fallback. Hermes + Ollama make switching seamless.
 
 | Model | Size | Best for | Fits 16GB? |
 |---|---|---|---|
-| **Qwen3.5 4B** | ~3 GB | Light tasks — surprisingly capable with Hermes | Yes, fast |
-| **Qwen3.5 9B** | ~6 GB | Solid daily driver, good reasoning | Yes, comfortable |
+| **Phi-4 Mini 3.8B** | ~2 GB | Quick tasks, cron jobs — surprisingly capable | Yes, very fast |
 | **Gemma 4 E4B** | ~3 GB | Edge tasks, basic coding, native audio/video input | Yes, fast |
+| **Qwen3.5 4B** | ~3 GB | Light tasks — surprisingly capable with Hermes | Yes, fast |
+| **Nous Hermes 3 8B** | ~5 GB | Best Hermes integration, native agent format | Yes, comfortable |
+| **Qwen3.5 9B** | ~6 GB | Solid daily driver, good reasoning | Yes, comfortable |
+| **Llama 4 Scout 17B-A4B** (MoE) | ~12 GB | Strong reasoning (only 4B active per token via MoE) | Yes |
 | **Gemma 4 26B-A4B** (MoE) | ~16 GB | Strong reasoning (only 4B active per token via MoE) | Tight, may swap |
 | **Qwen3.5 27B** (Q4) | ~16 GB | Best local reasoning at this tier | Too tight |
 | **Qwen3.6 local** | ~24 GB | Full local agent powerhouse | No — needs 48GB+ |
 
-**Sweet spot for 16 GB:** Qwen3.5 9B. Community-validated with Hermes.
+**Sweet spot for 16 GB:** Qwen3.5 9B or Nous Hermes 3 8B. Both community-validated with Hermes.
 
 ### Upgrade path (if you outgrow 16 GB)
 
@@ -537,8 +617,27 @@ Hermes supports multiple execution backends: local (default), Docker, SSH, and o
 
 **Restrict your Telegram bot.** Without `TELEGRAM_ALLOWED_USERS` in your `.env`, anyone who discovers your bot's username can chat with your agent. Always set it to your numeric Telegram user ID (find it via @userinfobot → `/myid`).
 
-### Cloud fallback is automatic — no approval prompt
-When the local model fails, Hermes switches to the fallback provider immediately without asking. There's no config option for user-confirmed fallback. This means a misconfigured local provider can silently burn cloud credits. Know this going in — and make sure your local config actually works (see Troubleshooting below) before relying on the fallback as a safety net.
+### Cloud fallback — now with user approval mode
+When the local model fails, Hermes can switch to the fallback provider. By default this happens automatically, but you can now control it with `fallback_model.mode` in `config.yaml`:
+
+| Mode | Behavior |
+|------|----------|
+| `auto` | Legacy default — switches immediately without asking |
+| `ask` | **Recommended** — prompts "Primary failed. Send /fallback to confirm" and waits |
+| `off` | Never falls back — primary only |
+
+```yaml
+# In ~/.hermes/config.yaml
+fallback_model:
+  provider: openrouter
+  model: anthropic/claude-sonnet-4
+  mode: ask          # ask before spending cloud credits
+  max_tokens: 4096   # prevents 402 errors on OpenRouter free tier
+```
+
+**Commands:** `/fallback` to confirm a pending switch, `/nofallback` to disable fallback for the current session.
+
+**Important:** Saying "no fallback please" in chat does NOT change the config — the LLM treats it as conversation. Use `/nofallback` instead.
 
 ### Token costs with cloud models
 Even "cheap" cloud models add up with heavy agentic use. Set spending limits on every API provider before you start. Start conservative ($20–50/month) and raise once you understand usage patterns.
@@ -552,6 +651,54 @@ Some users report sessions timing out or dying, especially with local models. No
 ### Vendor risk
 Anthropic cut off Claude subscriptions from third-party agents in April 2026. OpenClaw was most affected. Hermes was model-agnostic from day one, but the lesson applies: don't build critical workflows on a single provider.
 
+### Prompt budget — why small models stop calling tools
+
+**This is the #1 silent failure with local models.** Hermes builds a system prompt from: SOUL.md + memory instructions + tool-use enforcement + skills index + context files (AGENTS.md, .cursorrules) + platform hints. Plus JSON schemas for every registered tool. If the total exceeds ~5,000 tokens on a 9B model, the model stops making tool calls and instead generates text that *looks like* tool usage (fake terminal commands, hallucinated results).
+
+**Token budget for a 9B model on Telegram:**
+
+| Component | Default | Optimized | How to reduce |
+|-----------|---------|-----------|---------------|
+| Tool schemas (`hermes-telegram`) | ~9,400 (30 tools) | ~3,650 (10 tools) | Use explicit toolset list in `platform_toolsets.telegram` |
+| Skills index (`<available_skills>`) | ~2,200 | 0 | Remove `skills` from Telegram toolsets |
+| AGENTS.md (dev docs) | ~4,600 | 0 | Rename to `.dev` if gateway runs from source tree |
+| SOUL.md + memory + enforcement | ~800 | ~800 | Keep — these are essential |
+| Platform hints | ~150 | ~150 | Keep |
+| **Total** | **~17,150** | **~4,600** | |
+
+**Symptoms of prompt bloat:** Bot says "I'll search for that" but never calls `web_search`. Bot generates fake terminal commands. Bot suggests you check websites manually. Bot responds but with no tool progress indicators.
+
+**Quick diagnosis:**
+```bash
+# Check your actual prompt overhead
+cd ~/.hermes/hermes-agent && venv/bin/python -c "
+from run_agent import AIAgent
+agent = AIAgent(model='qwen3.5:9b', api_key='ollama', base_url='http://localhost:11434/v1',
+    provider='custom', max_iterations=1, quiet_mode=True,
+    enabled_toolsets=['web','terminal','file','memory','cronjob','clarify'], platform='telegram')
+import json
+sp = agent._build_system_prompt()
+print(f'System prompt: ~{len(sp)//4} tokens')
+print(f'Tools: {len(agent.tools)} defs, ~{len(json.dumps(agent.tools))//4} tokens')
+print(f'Total overhead: ~{(len(sp)+len(json.dumps(agent.tools)))//4} tokens')
+"
+```
+
+**Recommended Telegram toolset for 9B models:**
+```yaml
+platform_toolsets:
+  telegram:
+  - web        # web_search + web_extract
+  - terminal   # shell commands
+  - file       # read/write/search files
+  - memory     # persistent memory
+  - cronjob    # scheduled tasks
+  - clarify    # ask user for clarification
+  # NOT included: skills (adds ~2,200 tokens of index), browser (5 tools),
+  # vision, image_gen, tts, todo, delegation, messaging, homeassistant
+  # Add these back if you upgrade to 14B+ or use a cloud primary model
+```
+
 ### Backup
 Your `~/.hermes/` directory contains skills, memory (SQLite database), and configs. This is the accrued value of a self-improving agent. Back it up. Time Machine works. So does a simple cron job:
 
@@ -564,6 +711,24 @@ Your `~/.hermes/` directory contains skills, memory (SQLite database), and confi
 
 ## Troubleshooting
 
+### Error Message Decoder
+
+These are the most common errors from real-world testing. If you hit one, start here.
+
+| Error you see | What it means | Fix |
+|---|---|---|
+| **HTTP 400 from primary model** | Local Ollama model isn't responding to the request format | 1. Is Ollama running? `curl http://localhost:11434/v1/models` 2. Is the model loaded? `ollama list` 3. Does the model name in config.yaml match exactly? |
+| **HTTP 402 from OpenRouter** | Not enough credits for the requested `max_tokens` | Add `max_tokens: 4096` to your `fallback_model` config, **or** add $5 at [openrouter.ai/settings/credits](https://openrouter.ai/settings/credits). $5 buys ~1M tokens. |
+| **"No home channel is set"** | Bot doesn't know where to deliver cron results | Send `/sethome` in your Telegram chat. **Do this first** after setup. |
+| **"I can't access your files"** | User referenced a local file path; bot has no filesystem access on Telegram | Paste file contents directly into chat, or enable the `file` + `terminal` toolsets |
+| **Bot talks about tools but never calls them** | Prompt bloat — system prompt + tool schemas exceed ~5K tokens, overwhelming the 9B model | See [Prompt budget](#prompt-budget--why-small-models-stop-calling-tools). Reduce Telegram toolset, remove `skills`, rename `AGENTS.md` |
+| **Bot makes up news / hallucinates current events** | No web search backend configured — model fabricates from training data | Run `hermes tools` and enable Tavily (free, 1,000 searches/month). Set `TAVILY_API_KEY` in `~/.hermes/.env` |
+| **Bot ignores "no fallback please"** | Chat messages are LLM conversation, not config commands | Use `/nofallback` command instead. Or set `mode: off` in `fallback_model` config |
+| **"Primary failed. Send /fallback to confirm"** | Fallback mode is `ask` (recommended) — bot is waiting for your approval | Send `/fallback` to switch, or fix your primary model first |
+| **10+ minutes thinking, then "you haven't provided a task"** | Context window overflow — message too long for local model | Split long prompts into smaller messages. Or use a model with a larger context window. |
+
+### Infrastructure Issues
+
 | Problem | Fix |
 |---|---|
 | **`brew: command not found`** | Homebrew needs to be added to PATH after install. Run: `eval "$(/opt/homebrew/bin/brew shellenv)"` then `echo 'eval "$(/opt/homebrew/bin/brew shellenv)"' >> ~/.zprofile` to make it permanent. |
@@ -575,10 +740,51 @@ Your `~/.hermes/` directory contains skills, memory (SQLite database), and confi
 | **Telegram bot not responding** | Check gateway: `hermes gateway status`. Re-run `hermes gateway setup` with your bot token. |
 | **SSH "No route to host"** | Mac Mini's network went to sleep. Fix: `sudo pmset -a sleep 0 && sudo pmset -a disablesleep 1 && sudo pmset -a womp 1 && sudo pmset -a networkoversleep 1`. The GUI energy setting alone isn't enough for headless setups. |
 | **SSH connection refused** | Verify Remote Login is enabled in System Settings > Sharing. Check firewall isn't blocking port 22. |
-| **Launchd service not starting** | Check logs: `cat /tmp/hermes.err.log`. Verify path: `which hermes` should return `/opt/homebrew/bin/hermes`. |
+| **Launchd service not starting** | Check logs: `cat ~/.hermes/logs/gateway.error.log`. Verify path: `which hermes` should return `~/.local/bin/hermes`. If not found, add `~/.local/bin` to PATH. |
 | **Version mismatch** | Run `hermes --version` — this guide was written for v0.10.0 (April 2026). If you're on an older version, run `hermes update`. |
 | **Slow inference** | Normal for local models. Qwen3.5 9B (Q4_K_M) on M4 16GB: expect ~12-13 tokens/sec decode. Smaller models (4B) are faster. MoE models like Qwen3.5-35B-A3B can actually be faster (~17 tok/s) since fewer parameters are active per token. |
 | **Agent keeps asking for clarification** | Update SOUL.md: add "Execute tasks as instructed. Do not add suggestions or ask for clarification when the task is clear." |
+
+### Annotated Config Template
+
+Reference `config.yaml` with comments explaining each field's impact:
+
+```yaml
+model:
+  default: "qwen3.5:9b"      # Must match `ollama list` output exactly
+  provider: "custom"          # Use "custom" not "ollama" — the alias can misroute
+  base_url: "http://localhost:11434/v1"  # Ollama's OpenAI-compatible endpoint
+  api_key: "ollama"           # Ollama doesn't need a real key, but field is required
+  context_length: 65536       # Match your model's actual context window
+
+# OPTIONAL: fallback to cloud model when primary fails
+# Remove this entire block if you don't want any fallback
+fallback_model:
+  provider: openrouter
+  model: anthropic/claude-sonnet-4
+  mode: ask                   # "auto" = switch silently | "ask" = confirm first | "off" = never
+  max_tokens: 4096            # IMPORTANT: prevents 402 errors on OpenRouter free tier
+                              # Without this, default is 64000 which exceeds free credit budget
+
+# Telegram toolset — reduced for 9B models (default hermes-telegram has 30 tools,
+# which overwhelms small models and silently disables tool calling)
+platform_toolsets:
+  telegram:
+  - web          # web_search + web_extract (requires TAVILY_API_KEY in .env)
+  - terminal     # shell commands
+  - file         # read/write/search files
+  - memory       # persistent memory across sessions
+  - cronjob      # scheduled tasks
+  - clarify      # ask user for clarification
+  # Add 'skills', 'browser', 'vision' etc. if upgrading to 14B+ model
+
+# Web search backend — required for news/current events tasks
+# Without this, the bot WILL hallucinate when asked about today's news
+web:
+  backend: tavily             # Options: tavily (search, 1K free/mo), exa (semantic, ~1K free/mo),
+                              #          firecrawl (deep scrape, 500 free), parallel (search+extract)
+  # Set TAVILY_API_KEY in ~/.hermes/.env — get free key at tavily.com
+```
 
 ### Updating
 
@@ -610,6 +816,9 @@ brew upgrade ollama
 | `hermes update` | Update Hermes |
 | `ollama pull qwen3.5:9b` | Download/update a local model |
 | `brew services start ollama` | Run Ollama as background service |
+| `/sethome` | Set current chat as home channel (do this first!) |
+| `/fallback` | Confirm switching to fallback model (when mode=ask) |
+| `/nofallback` | Disable fallback for this session (primary only) |
 | `hermes config set web.backend tavily` | Set web search provider |
 | `hermes skills install [repo]` | Install a skill collection |
 | `tokscale --hermes` | Check token consumption |
